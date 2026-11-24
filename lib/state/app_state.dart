@@ -42,7 +42,12 @@ class AppState extends ChangeNotifier {
   OngAccreditationStatus _ongStatus = OngAccreditationStatus.accredited;
   String _userName = 'Carlos Mendoza';
   String _userEmail = 'carlos.mendoza@email.com';
-  String _userLocation = 'Miraflores, Lima';
+  String _userDni = '71234567';
+  String _userLocation = 'Piura';
+  AccountStatus _userAccountStatus = AccountStatus.activa; // Por defecto activo para demo
+  DateTime? _userApprovalDate = DateTime.now();
+  DateTime? _userExpirationDate = DateTime.now().add(const Duration(days: 365));
+
   final String _businessName = 'Panadería Don Lucho';
   final String _orgName = 'Comedor Popular Santa Rosa';
 
@@ -50,9 +55,13 @@ class AppState extends ChangeNotifier {
   OngAccreditationStatus get ongStatus => _ongStatus;
   String get userName => _userName;
   String get userEmail => _userEmail;
+  String get userDni => _userDni;
   String get userLocation => _userLocation;
   String get businessName => _businessName;
   String get orgName => _orgName;
+  AccountStatus get userAccountStatus => _userAccountStatus;
+  DateTime? get userApprovalDate => _userApprovalDate;
+  DateTime? get userExpirationDate => _userExpirationDate;
 
   void setRole(UserRole role) {
     _currentRole = role;
@@ -64,33 +73,187 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setUserInfo({required String name, required String email, String? location, UserRole? role}) {
-    _userName = name;
-    _userEmail = email;
-    if (location != null && location.isNotEmpty) {
-      _userLocation = location;
-    }
-    if (role != null) {
-      _currentRole = role;
-    }
+  void setAccountStatus(AccountStatus status) {
+    _userAccountStatus = status;
     notifyListeners();
   }
 
-  /// Calcula dinámicamente la distancia aproximada entre la ubicación del usuario y el comercio
-  String calculateDistanceText(String userLoc, String businessLoc) {
-    final u = userLoc.toLowerCase();
-    final b = businessLoc.toLowerCase();
+  void setUserInfo({
+    required String name,
+    required String email,
+    String? dni,
+    String? location,
+    UserRole? role,
+    AccountStatus? accountStatus,
+  }) {
+    _userName = name;
+    _userEmail = email;
+    if (dni != null) _userDni = dni;
+    if (location != null && location.isNotEmpty) _userLocation = location;
+    if (role != null) _currentRole = role;
+    if (accountStatus != null) _userAccountStatus = accountStatus;
+    notifyListeners();
+  }
 
-    if (u.contains('miraflores') && b.contains('miraflores')) {
-      return '0.8 km';
-    } else if (u.contains('san isidro') || b.contains('san isidro')) {
-      return '2.3 km';
-    } else if (u.contains('surco') || b.contains('surco')) {
-      return '3.5 km';
-    } else if (u.contains('lince') || b.contains('lince')) {
-      return '1.1 km';
+  // Lista de cuentas de usuario registradas
+  final List<UserProfile> _registeredUserProfiles = [
+    UserProfile(
+      uid: 'u_demo_1',
+      fullName: 'Marco R. Silva',
+      email: 'marco.r@email.com',
+      phone: '987654321',
+      dni: '71829304',
+      role: UserRole.localUser,
+      department: 'Piura',
+      province: 'Piura',
+      address: 'Av. Grau 410',
+      district: 'Piura',
+      status: AccountStatus.pendiente,
+      sisfohClassification: SisfohClassification.pobreExtremo,
+      attachedDocuments: [
+        DocumentAttachment(
+          id: 'doc_1',
+          fileName: 'Constancia_CSE_SISFOH_Marco.pdf',
+          fileType: 'application/pdf',
+          fileSizeMb: 1.4,
+          uploadDate: DateTime.now(),
+        ),
+      ],
+    ),
+    UserProfile(
+      uid: 'u_demo_2',
+      fullName: 'Comedor Popular Santa Rosa',
+      email: 'santa.rosa@ong.org',
+      phone: '976543210',
+      role: UserRole.socialOrg,
+      orgType: 'Comedor Popular',
+      department: 'Piura',
+      province: 'Piura',
+      address: 'Calle Real 120',
+      district: 'Castilla',
+      status: AccountStatus.pendiente,
+      attachedDocuments: [
+        DocumentAttachment(
+          id: 'doc_2',
+          fileName: 'Resolucion_Municipal_Comedor.pdf',
+          fileType: 'application/pdf',
+          fileSizeMb: 2.1,
+          uploadDate: DateTime.now(),
+        ),
+      ],
+    ),
+    UserProfile(
+      uid: 'u_demo_3',
+      fullName: 'Panadería & Pastelería Don Lucho',
+      email: 'donlucho@panaderia.com',
+      phone: '987123456',
+      ruc: '20123456789',
+      role: UserRole.business,
+      businessType: 'Panadería',
+      department: 'Piura',
+      province: 'Piura',
+      district: 'Piura',
+      address: 'Av. Grau 450, Piura',
+      latitude: -5.1945,
+      longitude: -80.6328,
+      status: AccountStatus.pendiente,
+      attachedDocuments: [
+        DocumentAttachment(
+          id: 'doc_3',
+          fileName: 'Licencia_Funcionamiento_Municipal.pdf',
+          fileType: 'application/pdf',
+          fileSizeMb: 1.9,
+          uploadDate: DateTime.now(),
+        ),
+        DocumentAttachment(
+          id: 'doc_4',
+          fileName: 'Ficha_RUC_SUNAT_Activo_Habido.pdf',
+          fileType: 'application/pdf',
+          fileSizeMb: 1.2,
+          uploadDate: DateTime.now(),
+        ),
+        DocumentAttachment(
+          id: 'doc_5',
+          fileName: 'Foto_Fachada_Local_DonLucho.jpg',
+          fileType: 'image/jpeg',
+          fileSizeMb: 2.8,
+          uploadDate: DateTime.now(),
+        ),
+      ],
+    ),
+  ];
+
+  List<UserProfile> get registeredUserProfiles => List.unmodifiable(_registeredUserProfiles);
+
+  bool isDniAlreadyRegistered(String dni) {
+    if (dni.trim().isEmpty) return false;
+    return _registeredUserProfiles.any((p) => p.dni == dni.trim());
+  }
+
+  bool isRucAlreadyRegistered(String ruc) {
+    if (ruc.trim().isEmpty) return false;
+    return _registeredUserProfiles.any((p) => p.ruc == ruc.trim());
+  }
+
+  bool isEmailAlreadyRegistered(String email) {
+    if (email.trim().isEmpty) return false;
+    return _registeredUserProfiles.any((p) => p.email.toLowerCase() == email.trim().toLowerCase());
+  }
+
+  void registerUserAccount(UserProfile profile) {
+    _registeredUserProfiles.insert(0, profile);
+    _userName = profile.fullName;
+    _userEmail = profile.email;
+    _userDni = profile.dni;
+    _userLocation = profile.district;
+    _currentRole = profile.role;
+    _userAccountStatus = profile.status;
+    notifyListeners();
+  }
+
+  void approveUserAccount(String uid) {
+    final idx = _registeredUserProfiles.indexWhere((p) => p.uid == uid);
+    if (idx != -1) {
+      final profile = _registeredUserProfiles[idx];
+      profile.status = AccountStatus.activa;
+      profile.approvalDate = DateTime.now();
+      profile.expirationDate = DateTime.now().add(const Duration(days: 365));
+
+      if (profile.email.toLowerCase() == _userEmail.toLowerCase()) {
+        _userAccountStatus = AccountStatus.activa;
+        _userApprovalDate = profile.approvalDate;
+        _userExpirationDate = profile.expirationDate;
+      }
+
+      addNotification(
+        '¡Cuenta Aprobada!',
+        'Tu registro en EcoSupply ha sido APROBADO por el administrador. Ya puedes hacer uso completo de la plataforma.',
+        profile.email,
+      );
+
+      notifyListeners();
     }
-    return '1.5 km';
+  }
+
+  void rejectUserAccount(String uid, String reason) {
+    final idx = _registeredUserProfiles.indexWhere((p) => p.uid == uid);
+    if (idx != -1) {
+      final profile = _registeredUserProfiles[idx];
+      profile.status = AccountStatus.rechazada;
+      profile.rejectionReason = reason;
+
+      if (profile.email.toLowerCase() == _userEmail.toLowerCase()) {
+        _userAccountStatus = AccountStatus.rechazada;
+      }
+
+      addNotification(
+        'Solicitud de Registro Rechazada',
+        'Tu registro en EcoSupply fue rechazado. Motivo: $reason',
+        profile.email,
+      );
+
+      notifyListeners();
+    }
   }
 
   // Notificaciones
@@ -118,7 +281,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Publicaciones por Lote Completo
+  // Publicaciones por Lote Completo en Piura
   final List<Product> _products = [
     Product(
       id: 'prod_1',
@@ -132,7 +295,7 @@ class AppState extends ChangeNotifier {
       batchQuantity: 3,
       category: 'Panadería',
       businessName: 'Panadería Don Lucho',
-      businessAddress: 'Av. Larco 456, Miraflores, Lima',
+      businessAddress: 'Av. Grau 450, Piura',
       distanceText: '0.8 km',
       expiryText: 'Hoy hasta las 7:00 pm',
       pickupSchedule: '5:00 PM - 7:00 PM',
@@ -151,7 +314,7 @@ class AppState extends ChangeNotifier {
       batchQuantity: 2,
       category: 'Café',
       businessName: 'Dulces de Piura',
-      businessAddress: 'Av. Benavides 780, Miraflores, Lima',
+      businessAddress: 'Calle Libertad 320, Piura',
       distanceText: '1.1 km',
       expiryText: 'Hoy hasta las 8:00 pm',
       pickupSchedule: '6:00 PM - 8:00 PM',
@@ -170,7 +333,7 @@ class AppState extends ChangeNotifier {
       batchQuantity: 1,
       category: 'Menús',
       businessName: 'Café Tallán',
-      businessAddress: 'Calle Esperanza 210, Miraflores',
+      businessAddress: 'Av. Bolognesi 180, Piura',
       distanceText: '1.2 km',
       expiryText: 'Hoy hasta las 6:00 pm',
       pickupSchedule: '4:00 PM - 6:00 PM',
@@ -189,7 +352,7 @@ class AppState extends ChangeNotifier {
       batchQuantity: 4,
       category: 'Frutas',
       businessName: 'Mercado Modelos',
-      businessAddress: 'Av. Arequipa 4200, Miraflores',
+      businessAddress: 'Av. Sullana 510, Piura',
       distanceText: '2.3 km',
       expiryText: 'Hoy hasta las 5:00 pm',
       pickupSchedule: '3:00 PM - 5:00 PM',
@@ -208,7 +371,7 @@ class AppState extends ChangeNotifier {
       batchQuantity: 2,
       category: 'Panadería',
       businessName: 'Panadería San Miguel',
-      businessAddress: 'Calle Schell 340, Miraflores',
+      businessAddress: 'Av. Junín 210, Castilla, Piura',
       distanceText: '1.6 km',
       expiryText: 'Hoy hasta las 7:00 pm',
       pickupSchedule: '5:00 PM - 7:00 PM',
@@ -224,7 +387,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Reservas Iniciales (Coincidentes con el Diseño Solicitado)
+  // Reservas Iniciales
   final List<Reservation> _reservations = [
     Reservation(
       id: 'res_demo_1',
@@ -233,7 +396,7 @@ class AppState extends ChangeNotifier {
       batchSize: BatchSize.small,
       itemsIncluded: '4 baguettes de masa madre, 3 ciabattas, 2 croissants',
       businessName: 'Panadería Don Lucho',
-      businessAddress: 'Av. Larco 456, Miraflores, Lima',
+      businessAddress: 'Av. Grau 450, Piura',
       totalPrice: 12.00,
       status: 'pendiente',
       date: DateTime.now(),
@@ -241,8 +404,9 @@ class AppState extends ChangeNotifier {
       code: 'ECO-5301',
       userEmail: 'marco.r@email.com',
       userName: 'Marco R.',
+      userDni: '71829304',
       userRole: UserRole.localUser,
-      userLocation: 'Miraflores, Lima',
+      userLocation: 'Piura',
       distanceText: '0.8 km',
     ),
     Reservation(
@@ -252,7 +416,7 @@ class AppState extends ChangeNotifier {
       batchSize: BatchSize.large,
       itemsIncluded: '10 raciones completas de menú criollo',
       businessName: 'Panadería Don Lucho',
-      businessAddress: 'Av. Larco 456, Miraflores, Lima',
+      businessAddress: 'Av. Grau 450, Piura',
       totalPrice: 0.00,
       status: 'pendiente',
       date: DateTime.now(),
@@ -261,27 +425,8 @@ class AppState extends ChangeNotifier {
       userEmail: 'santa.rosa@ong.org',
       userName: 'Comedor Santa Rosa',
       userRole: UserRole.socialOrg,
-      userLocation: 'San Isidro, Lima',
+      userLocation: 'Castilla, Piura',
       distanceText: '2.3 km',
-    ),
-    Reservation(
-      id: 'res_demo_3',
-      productId: 'prod_4',
-      productTitle: 'Frutas variadas x3',
-      batchSize: BatchSize.small,
-      itemsIncluded: '2 kg de mandarinas, 1.5 kg de plátanos de seda',
-      businessName: 'Panadería Don Lucho',
-      businessAddress: 'Av. Larco 456, Miraflores, Lima',
-      totalPrice: 16.50,
-      status: 'pendiente',
-      date: DateTime.now(),
-      pickupWindow: 'Hoy 3:50 pm',
-      code: 'ECO-3503',
-      userEmail: 'ana.torres@email.com',
-      userName: 'Ana Torres',
-      userRole: UserRole.localUser,
-      userLocation: 'Lince, Lima',
-      distanceText: '1.1 km',
     ),
   ];
 
@@ -314,11 +459,41 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  String calculateDistanceText(String userLoc, String businessLoc) {
+    final u = userLoc.toLowerCase();
+    final b = businessLoc.toLowerCase();
+
+    if (u.contains('piura') && b.contains('piura')) {
+      return '0.8 km';
+    } else if (u.contains('castilla') || b.contains('castilla')) {
+      return '2.3 km';
+    } else if (u.contains('octubre') || b.contains('octubre')) {
+      return '1.5 km';
+    } else if (u.contains('catacaos') || b.contains('catacaos')) {
+      return '4.2 km';
+    }
+    return '1.8 km';
+  }
+
   String? validateReservation({
     required Product product,
     required UserRole userRole,
     required String userEmail,
   }) {
+    if (userRole == UserRole.localUser && _userAccountStatus != AccountStatus.activa) {
+      if (_userAccountStatus == AccountStatus.pendiente) {
+        return 'Tu cuenta se encuentra PENDIENTE DE VERIFICACIÓN por el administrador. Podrás reservar una vez que tus documentos SISFOH sean aprobados.';
+      } else if (_userAccountStatus == AccountStatus.vencida) {
+        return 'Tu verificación socioeconómica de 12 meses ha VENCIDO. Debes volver a adjuntar tu constancia CSE en tu Perfil.';
+      } else {
+        return 'Tu cuenta no se encuentra activa en este momento.';
+      }
+    }
+
+    if (userRole == UserRole.business && _userAccountStatus != AccountStatus.activa) {
+      return 'Tu establecimiento se encuentra PENDIENTE DE VERIFICACIÓN por el administrador. Podrás operar una vez que se apruebe la verificación de tu local.';
+    }
+
     if (!product.isBusinessActive) {
       return 'El establecimiento se encuentra inactivo en este momento.';
     }
@@ -441,10 +616,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Validación y Canje de Código QR en Tienda
+  // Validación y Canje de Código QR en Tienda con DNI del Consumidor
   QrValidationResult validateAndRedeemBatchQr({
     required String rawPayload,
     required String scanningBusinessName,
+    String? providedDni,
   }) {
     final parts = rawPayload.split('|');
     String resId = '';
@@ -467,7 +643,6 @@ class AppState extends ChangeNotifier {
 
     final res = _reservations[idx];
 
-    // 1. Validar establecimiento responsable
     if (res.businessName.trim().toLowerCase() != scanningBusinessName.trim().toLowerCase()) {
       return QrValidationResult(
         isValid: false,
@@ -476,7 +651,16 @@ class AppState extends ChangeNotifier {
       );
     }
 
-    // 2. Validar estado de la reserva
+    if (res.userRole == UserRole.localUser && providedDni != null && providedDni.trim().isNotEmpty) {
+      if (res.userDni.isNotEmpty && res.userDni.trim() != providedDni.trim()) {
+        return QrValidationResult(
+          isValid: false,
+          message: 'DNI No Coincide: El DNI ingresado ($providedDni) no coincide con el DNI registrado en la reserva (${res.userDni}).',
+          reservation: res,
+        );
+      }
+    }
+
     if (res.status == 'pendiente') {
       return QrValidationResult(
         isValid: false,
@@ -520,16 +704,6 @@ class AppState extends ChangeNotifier {
       );
     }
 
-    // 3. Validar acreditación ONG si es donación
-    if (res.userRole == UserRole.socialOrg && !_ongStatus.canRequestDonations) {
-      return QrValidationResult(
-        isValid: false,
-        message: 'Acreditación insuficiente: La organización "${res.userName}" tiene estado "${_ongStatus.displayName}".',
-        reservation: res,
-      );
-    }
-
-    // 4. Entrega exitosa de 1 Lote Completo
     res.status = 'retirada';
     res.redeemedAt = DateTime.now();
     res.redeemedByBusiness = scanningBusinessName;
@@ -544,7 +718,7 @@ class AppState extends ChangeNotifier {
 
     return QrValidationResult(
       isValid: true,
-      message: '¡Código QR Válido! Se registró la entrega de 1 ${res.batchSize.displayName}.',
+      message: '¡Código QR Válido! Se verificó el DNI (${res.userDni}) y se registró la entrega de 1 ${res.batchSize.displayName}.',
       reservation: res,
     );
   }

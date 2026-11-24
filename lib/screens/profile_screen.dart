@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_models.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
+import 'admin_panel_screen.dart';
 import 'welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -114,6 +115,42 @@ class ProfileScreen extends StatelessWidget {
                     },
                   ),
                 ],
+
+                // Selector de Estado de Cuenta del Consumidor
+                if (appState.currentRole == UserRole.localUser) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Estado de Verificación Consumidor *',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: EcoTheme.textDark, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<AccountStatus>(
+                    initialValue: appState.userAccountStatus,
+                    decoration: const InputDecoration(
+                      labelText: 'Estado de Cuenta',
+                      prefixIcon: Icon(Icons.verified_rounded, color: EcoTheme.primary),
+                    ),
+                    items: AccountStatus.values.map((status) {
+                      return DropdownMenuItem(
+                        value: status,
+                        child: Text(
+                          status.displayName,
+                          style: TextStyle(
+                            color: status.canReserve ? EcoTheme.primaryDark : Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        appState.setAccountStatus(val);
+                        setSheetState(() {});
+                      }
+                    },
+                  ),
+                ],
+
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -276,7 +313,7 @@ class ProfileScreen extends StatelessWidget {
                             const Icon(Icons.swap_horiz_rounded, size: 18, color: EcoTheme.primary),
                             const SizedBox(width: 6),
                             Text(
-                              'Rol: ${appState.currentRole.shortTag}${isOng ? " (${appState.ongStatus.displayName})" : ""}',
+                              'Rol: ${appState.currentRole.shortTag}${isOng ? " (${appState.ongStatus.displayName})" : isConsumer ? " (${appState.userAccountStatus.displayName})" : ""}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -356,59 +393,23 @@ class ProfileScreen extends StatelessWidget {
                 const SizedBox(height: 16),
               ],
 
-              // Estado de Acreditación de la ONG
-              if (isOng) ...[
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: appState.ongStatus.canRequestDonations
-                        ? EcoTheme.primaryLight
-                        : Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: appState.ongStatus.canRequestDonations
-                          ? EcoTheme.primary
-                          : Colors.red.shade300,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            appState.ongStatus.canRequestDonations
-                                ? Icons.verified_rounded
-                                : Icons.warning_amber_rounded,
-                            color: appState.ongStatus.canRequestDonations
-                                ? EcoTheme.primary
-                                : Colors.red,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Acreditación ONG: ${appState.ongStatus.displayName}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: appState.ongStatus.canRequestDonations
-                                  ? EcoTheme.primaryDark
-                                  : Colors.red.shade900,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        appState.ongStatus.canRequestDonations
-                            ? 'Tu organización está acreditada y habilitada para solicitar donaciones gratuitas y lotes medianos/grandes.'
-                            : 'Las donaciones y lotes grandes requieren estado "Acreditada". Contacta con el equipo de EcoSupply para regularizar tu acreditación.',
-                        style: const TextStyle(fontSize: 13, color: EcoTheme.textDark, height: 1.35),
-                      ),
-                    ],
-                  ),
+              // Botón de Panel de Administración EcoSupply
+              Card(
+                color: EcoTheme.primaryLight,
+                child: ListTile(
+                  leading: const Icon(Icons.admin_panel_settings_rounded, color: EcoTheme.primary, size: 28),
+                  title: const Text('Panel de Administración EcoSupply', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: EcoTheme.primaryDark)),
+                  subtitle: Text('Aprobar / Rechazar registros (${appState.registeredUserProfiles.where((p) => p.status == AccountStatus.pendiente).length} pendientes)', style: const TextStyle(fontSize: 12, color: EcoTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: EcoTheme.primary),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AdminPanelScreen()),
+                    );
+                  },
                 ),
-                const SizedBox(height: 16),
-              ],
+              ),
+              const SizedBox(height: 16),
 
               Card(
                 child: ListTile(

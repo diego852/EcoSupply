@@ -19,7 +19,7 @@ extension UserRoleExtension on UserRole {
   String get description {
     switch (this) {
       case UserRole.localUser:
-        return 'Reserva 1 lote pequeño al mes en Venta Social';
+        return 'Reserva 1 lote pequeño al mes en Venta Social (Requiere SISFOH)';
       case UserRole.business:
         return 'Publica y vende o dona lotes de alimentos excedentes';
       case UserRole.socialOrg:
@@ -37,6 +37,118 @@ extension UserRoleExtension on UserRole {
         return 'ONG / Comedor';
     }
   }
+}
+
+enum AccountStatus {
+  activa,     // Aprobada / Activa
+  pendiente,  // En proceso de revisión por el administrador
+  rechazada,  // Rechazada por el administrador
+  suspendida, // Suspendida
+  vencida,    // Vencida (cumplidos los 12 meses)
+}
+
+extension AccountStatusExtension on AccountStatus {
+  String get displayName {
+    switch (this) {
+      case AccountStatus.activa:
+        return 'Aprobada / Activa';
+      case AccountStatus.pendiente:
+        return 'Pendiente de Verificación';
+      case AccountStatus.rechazada:
+        return 'Rechazada';
+      case AccountStatus.suspendida:
+        return 'Suspendida';
+      case AccountStatus.vencida:
+        return 'Verificación Vencida (Reagendar)';
+    }
+  }
+
+  bool get canReserve => this == AccountStatus.activa;
+}
+
+enum SisfohClassification {
+  pobreExtremo,
+  pobre,
+  noPobre,
+}
+
+extension SisfohClassificationExtension on SisfohClassification {
+  String get displayName {
+    switch (this) {
+      case SisfohClassification.pobreExtremo:
+        return 'Pobre extremo';
+      case SisfohClassification.pobre:
+        return 'Pobre';
+      case SisfohClassification.noPobre:
+        return 'No pobre';
+    }
+  }
+
+  bool get isEligible => this == SisfohClassification.pobreExtremo || this == SisfohClassification.pobre;
+}
+
+class DocumentAttachment {
+  final String id;
+  final String fileName;
+  final String fileType; // 'image/jpeg', 'image/png', 'application/pdf'
+  final double fileSizeMb;
+  final DateTime uploadDate;
+
+  DocumentAttachment({
+    required this.id,
+    required this.fileName,
+    required this.fileType,
+    required this.fileSizeMb,
+    required this.uploadDate,
+  });
+}
+
+class UserProfile {
+  final String uid;
+  final String fullName;
+  final String email;
+  final String phone;
+  final String dni;
+  final String ruc;
+  final UserRole role;
+  final String businessType;
+  final String orgType;
+  final String department;
+  final String province;
+  final String district;
+  final String address;
+  final double? latitude;
+  final double? longitude;
+  AccountStatus status;
+  final SisfohClassification? sisfohClassification;
+  final List<DocumentAttachment> attachedDocuments;
+  DateTime? approvalDate;
+  DateTime? expirationDate;
+  String? rejectionReason;
+
+  UserProfile({
+    required this.uid,
+    required this.fullName,
+    required this.email,
+    required this.phone,
+    this.dni = '',
+    this.ruc = '',
+    required this.role,
+    this.businessType = '',
+    this.orgType = '',
+    this.department = 'Piura',
+    this.province = 'Piura',
+    required this.district,
+    required this.address,
+    this.latitude,
+    this.longitude,
+    required this.status,
+    this.sisfohClassification,
+    required this.attachedDocuments,
+    this.approvalDate,
+    this.expirationDate,
+    this.rejectionReason,
+  });
 }
 
 enum OngAccreditationStatus {
@@ -183,6 +295,7 @@ class Reservation {
   final String code;
   final String userEmail;
   final String userName;
+  final String userDni;
   final UserRole userRole;
   final String userLocation; // Ubicación donde se creó la cuenta / solicitud
   final String distanceText; // Distancia calculada en km
@@ -207,6 +320,7 @@ class Reservation {
     required this.code,
     required this.userEmail,
     required this.userName,
+    this.userDni = '',
     required this.userRole,
     this.userLocation = 'Miraflores, Lima',
     this.distanceText = '0.8 km',
