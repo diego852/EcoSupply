@@ -1,5 +1,7 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/nominatim_geocoding_service.dart';
@@ -20,45 +22,148 @@ class MapLocationPickerScreen extends StatefulWidget {
 class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
   late MapController _mapController;
   late LatLng _selectedLocation;
+  bool _isGettingLocation = false;
   bool _isLoadingAddress = false;
+  NominatimGeocodingResult? _geocodedResult;
 
-  // Centro de Piura, Perú por defecto
-  static final LatLng _piuraDefaultCenter = LatLng(-5.1945, -80.6328);
+  // Centro por defecto (Piura, Perú) si no se provee initialLocation
+  static const double _defaultLat = -5.1945;
+  static const double _defaultLng = -80.6328;
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
-    _selectedLocation = widget.initialLocation ?? _piuraDefaultCenter;
-  }
+    _selectedLocation = widget.initialLocation ?? const LatLng(_defaultLat, _defaultLng);
 
-  void _confirmLocation() async {
-    setState(() => _isLoadingAddress = true);
-
-    final result = await NominatimGeocodingService.reverseGeocode(
-      lat: _selectedLocation.latitude,
-      lon: _selectedLocation.longitude,
-    );
-
-    setState(() => _isLoadingAddress = false);
-
-    if (mounted) {
-      Navigator.pop(context, result);
+    // Si ya viene con una ubicación inicial, obtener su dirección por geocodificación inversa
+    if (widget.initialLocation != null) {
+      _fetchAddressForLocation(_selectedLocation);
     }
   }
 
-  void _useCurrentLocation() {
-    // Centrar en ubicación por defecto de Piura o actual
-    setState(() {
-      _selectedLocation = _piuraDefaultCenter;
-    });
-    _mapController.move(_selectedLocation, 15.0);
+  /// Realiza la geocodificación inversa para obtener Departamento, Provincia, Distrito y Dirección
+  Future<void> _fetchAddressForLocation(LatLng location) async {
+    setState(() => _isLoadingAddress = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Mapa centrado en Piura. Toca en el mapa para marcar tu local exacto.'),
-      ),
+    final result = await NominatimGeocodingService.reverseGeocode(
+      lat: location.latitude,
+      lon: location.longitude,
     );
+
+    if (mounted) {
+      setState(() {
+        _geocodedResult = result;
+        _isLoadingAddress = false;
+      });
+    }
+  }
+
+  /// Actualiza la ubicación seleccionada y ejecuta geocodificación inversa
+  void _onLocationChanged(LatLng newLocation) {
+    setState(() {
+      _selectedLocation = newLocation;
+    });
+    _fetchAddressForLocation(newLocation);
+  }
+
+  /// Obtiene la ubicación real del dispositivo usando Geolocator
+  Future<void> _useCurrentLocation() async {
+    if (_isGettingLocation) return;
+
+    setState(() => _isGettingLocation = true);
+
+    try {
+      // 2a. Verificar servicio de ubicación activo
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('El servicio de ubicación está desactivado.'),
+              action: SnackBarAction(
+                label: 'Ajustes',
+                onPressed: () => Geolocator.openLocationSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 2b. Verificar y solicitar permisos de ubicación
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Permiso de ubicación denegado. Puedes seleccionar tu posición manualmente en el mapa.'),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Permiso de ubicación denegado permanentemente. Actívalo en los ajustes de la app.'),
+              action: SnackBarAction(
+                label: 'Ajustes App',
+                onPressed: () => Geolocator.openAppSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 2c. Obtén la posición con Geolocator (accuracy: high, timeLimit: 15s)
+      final Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+
+      final newLocation = LatLng(position.latitude, position.longitude);
+
+      // 2d. Mover mapa y marcador a la posición obtenida con zoom ~17
+      setState(() {
+        _selectedLocation = newLocation;
+      });
+      _mapController.move(newLocation, 17.0);
+
+      // Geocodificación inversa con Nominatim
+      await _fetchAddressForLocation(newLocation);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No pudimos obtener tu ubicación. Mueve el marcador manualmente.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGettingLocation = false);
+      }
+    }
+  }
+
+  void _confirmLocation() async {
+    // Si la geocodificación no ha finalizado aún o no existe, hacerla ahora
+    if (_geocodedResult == null ||
+        _geocodedResult!.latitude != _selectedLocation.latitude ||
+        _geocodedResult!.longitude != _selectedLocation.longitude) {
+      await _fetchAddressForLocation(_selectedLocation);
+    }
+
+    if (mounted) {
+      Navigator.pop(context, _geocodedResult);
+    }
   }
 
   @override
@@ -74,11 +179,9 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _selectedLocation,
-              initialZoom: 14.5,
+              initialZoom: 15.0,
               onTap: (tapPosition, point) {
-                setState(() {
-                  _selectedLocation = point;
-                });
+                _onLocationChanged(point);
               },
             ),
             children: [
@@ -90,28 +193,46 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
                 markers: [
                   Marker(
                     point: _selectedLocation,
-                    width: 50,
-                    height: 50,
+                    width: 70,
+                    height: 70,
                     alignment: Alignment.topCenter,
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: EcoTheme.primaryDark,
-                            borderRadius: BorderRadius.circular(6),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanUpdate: (details) {
+                        // Permite arrastrar el marcador libremente por la pantalla
+                        final camera = _mapController.camera;
+                        final point = camera.latLngToScreenPoint(_selectedLocation);
+                        final newPoint = math.Point(point.x + details.delta.dx, point.y + details.delta.dy);
+                        final newLatLng = camera.pointToLatLng(newPoint);
+                        setState(() {
+                          _selectedLocation = newLatLng;
+                        });
+                      },
+                      onPanEnd: (_) {
+                        // Al soltar el marcador arrastrado, rellenar datos vía geocodificación inversa
+                        _fetchAddressForLocation(_selectedLocation);
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: EcoTheme.primaryDark,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Tu Local',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                          child: const Text(
-                            'Tu Local',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          const Icon(
+                            Icons.location_on_rounded,
+                            color: Colors.redAccent,
+                            size: 38,
                           ),
-                        ),
-                        const Icon(
-                          Icons.location_on_rounded,
-                          color: Colors.redAccent,
-                          size: 36,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -125,15 +246,27 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
             right: 16,
             child: FloatingActionButton.extended(
               heroTag: 'my_location_btn',
-              onPressed: _useCurrentLocation,
+              onPressed: _isGettingLocation ? null : _useCurrentLocation,
               backgroundColor: Colors.white,
               foregroundColor: EcoTheme.primary,
-              icon: const Icon(Icons.my_location_rounded),
-              label: const Text('Centrar en Piura', style: TextStyle(fontWeight: FontWeight.bold)),
+              icon: _isGettingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: EcoTheme.primary,
+                      ),
+                    )
+                  : const Icon(Icons.my_location_rounded),
+              label: Text(
+                _isGettingLocation ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ),
 
-          // Barra inferior para confirmar
+          // Barra inferior para mostrar la dirección detectada y confirmar
           Positioned(
             bottom: 0,
             left: 0,
@@ -154,6 +287,7 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
               child: SafeArea(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
@@ -167,6 +301,48 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
                         ),
                       ],
                     ),
+
+                    if (_isLoadingAddress) ...[
+                      const SizedBox(height: 8),
+                      const Row(
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: EcoTheme.primary),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Obteniendo dirección...', style: TextStyle(fontSize: 12, color: EcoTheme.textMuted)),
+                        ],
+                      ),
+                    ] else if (_geocodedResult != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: EcoTheme.primaryLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: EcoTheme.primary.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _geocodedResult!.address,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: EcoTheme.primaryDark),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_geocodedResult!.district}, ${_geocodedResult!.province}, ${_geocodedResult!.department}',
+                              style: const TextStyle(fontSize: 11, color: EcoTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 14),
                     SizedBox(
                       width: double.infinity,
